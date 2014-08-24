@@ -1,0 +1,145 @@
+---
+title: "Classifying Physical Movement Modalities From Accelerometer Data"
+author: "Arturo Chian"
+date: "Friday, August 22, 2014"
+output:
+  html_document:
+    number_sections: yes
+---
+
+# Introduction 
+
+In this Rmd, we are going to use ML Algorithms in order to predict the category of movement that human text subjects intentionally exhibited when performing a simple physical exercise, based on sensor data.
+
+## Goals
+The goal of this project is to predict the manner in which they did the exercise. 
+
+## Data
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+
+```{r,message=FALSE}
+setwd("C:/Users/auditor/Google Drive/Cursos/Data Science/08 Machine learning/plm")
+rm(list=ls()) #we want to clearing existing objects
+# If you want to download the files, you can use:
+#download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method = "curl")
+#download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method = "curl")
+data.train0<-read.csv("pml-training.csv", na.strings = c("NA", ""))
+data.train<-data.train0 #data.train0 will be our training data without any modification 
+data.test<-read.csv("pml-testing.csv", na.strings = c("NA", ""))
+
+```
+## Packages
+We are going to use some packages learned in this course.
+
+```{r,message=FALSE,warning=FALSE}
+library(randomForest)
+library(caret)
+
+```
+
+# Cleaning data
+We can see there are some variables that can be removed:
+
+```{r}
+#str(data.train) You can use this in order to see all the variables.
+```
+For example X (number of rows) and user_name could be useless.
+```{r}
+data.train<-data.train[-c(1:2)]
+a <- nearZeroVar(data.train) #we need to eliminate zero variance predictor. See ?nearZeroVar 
+data.train <- data.train[, -a]
+
+```
+
+In order to improve computationally our analysis
+```{r}
+d.NA <- apply(data.train, 2, function(x) {
+    sum(is.na(x))
+})
+data.train <- data.train[, which(d.NA == 0)]
+data.test<-data.test[, which(d.NA == 0)]
+# See the differences!
+dim(data.train)
+dim(data.train0)
+
+```
+
+# Our Model
+
+## 1st model: Tree
+
+```{r,cache=TRUE}
+set.seed(1)
+modFit <- train(classe ~ ., data = data.train, method = "rpart")
+```
+
+This task take a lot of time.
+Use this code in order to mesure that.
+```{r}
+#system.time(train(classe ~ ., data = data.train, method = "rpart")) Use this in order to calculate the time. In my case it's about 110 sec. 
+```
+
+```{r,cache=TRUE}
+modFit
+results <- modFit$results
+round(max(results$Accuracy), 4) * 100 
+```
+
+
+```{r,cache=TRUE}
+pred <- predict(modFit, data.train)
+cfM1 <- confusionMatrix(pred, data.train$classe)
+cfM1
+```
+
+Our result are not so good (acurracy is poor). For that reason, we are going to change our model. 
+
+## Ramdom Forest (from package caret)
+This is our final model. For that reason we are going to use the cross-validation
+
+### Cross-validation
+
+```{r,cache=TRUE}
+set.seed(1)
+tIndex <- createDataPartition(y = data.train$classe, p = 0.25, list = FALSE)
+data.train1 <- data.train[tIndex, ]  # 3927 obs. of 56 variables
+data.train.test <- data.train[-tIndex, ]  # test set for cross validation
+
+
+```
+
+
+```{r,cache=TRUE}
+set.seed(1)
+ctrl <- trainControl(method = "cv", number = 4, allowParallel = TRUE)
+set.seed(1)
+modFit2 <- train(classe ~ ., data = data.train1, method = "rf", prof = TRUE, trControl = ctrl)
+results2 <- modFit2$results
+round(max(results2$Accuracy), 4) * 100
+```
+
+```{r}
+pred <- predict(modFit2, data.train.test)
+data.train.test$Right <- pred == data.train.test$classe
+table(pred, data.train.test$classe)
+```
+
+## Expected out of sample error
+Our Expected out of sample error is very low. 
+
+```{r}
+A <- confusionMatrix(pred, data.train.test$classe)
+A
+```
+
+## Conclussions
+***When a tree doesn't work. Use the Forest... :)***
+Also is a good idea to subset our dataset mainly because some variables don't give enough variability (**See: Cleaning Data and nearZeroVar**)
+
+# Session Info
+
+
+```{r}
+sessionInfo()
+```
+
